@@ -1,0 +1,35 @@
+# vim: filetype=yaml
+---
+app-id: $FLATPAK_APP_ID 
+runtime: $FLATPAK_RUNTIME_PLATFORM
+runtime-version: '$FLATPAK_RUNTIME_VERSION'
+sdk: $FLATPAK_RUNTIME_SDK
+command: chirpwx.py
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=all
+  - --talk-name=org.gtk.vfs.*
+  - --share=network
+  - --filesystem=home
+modules:
+  - chirp-requirements.yaml
+  - name: chirp
+    buildsystem: simple
+    build-commands:
+      - cd ./chirp/locale && make
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - cp chirpwx.py ${FLATPAK_DEST}/bin/
+    sources:
+      - type: git
+        url: https://github.com/kk7ds/chirp.git
+    post-install:
+      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=$FLATPAK_ID ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key 'Exec' --set-value 'chirpwx.py %F' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/com.chirpmyradio.CHIRP.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's/com.chirpmyradio.CHIRP/radio.kr4erf.chirp.Chirp/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's/chirp.desktop/radio.kr4erf.chirp.Chirp.desktop/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
