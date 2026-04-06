@@ -4,7 +4,7 @@ app-id: radio.kr4erf.chirp.Chirp
 runtime: org.gnome.Platform
 runtime-version: '49'
 sdk: org.gnome.Sdk
-command: chirpwx.py
+command: chirpwx-wrapper.sh
 finish-args:
   - --socket=x11
   - --socket=wayland
@@ -21,16 +21,19 @@ modules:
       - cd ./chirp/locale && make
       - python3 -m pip install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
       - cp chirpwx.py ${FLATPAK_DEST}/bin/
+      - install -Dm755 chirpwx-wrapper.sh ${FLATPAK_DEST}/bin/chirpwx-wrapper.sh
     sources:
       - type: git
         url: https://github.com/kk7ds/chirp.git
-        commit: 45fd68cd20271e24778669eec19ec290caf8b559
+        commit: f4d152ee90cf521632e633af092470fe84ec862d
+      - type: file
+        path: chirpwx-wrapper.sh
     post-install:
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - desktop-file-edit --set-icon=$FLATPAK_ID ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-key 'Exec' --set-value 'chirpwx.py %F' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key 'Exec' --set-value 'chirpwx-wrapper.sh %F' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/com.chirpmyradio.CHIRP.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - sed -i 's/com.chirpmyradio.CHIRP/radio.kr4erf.chirp.Chirp/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - sed -i 's/chirp.desktop/radio.kr4erf.chirp.Chirp.desktop/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
