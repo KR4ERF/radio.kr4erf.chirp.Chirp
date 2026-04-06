@@ -21,7 +21,7 @@ FLATPAK_REPO_DIR := $(BUILD_CTX_DIR)/repo
 BUNDLE := $(FLATPAK_APP_ID).flatpak
 FLATPAK_BUNDLE := $(SCRATCH)/$(BUNDLE)
 
-DEPS := curl envsubst flatpak flatpak-builder git gpg python3 sed
+DEPS := curl envsubst flatpak flatpak-builder git gpg python3 sed gh
 DEPS_VALIDATED := $(SCRATCH)/.deps-validated
 
 PYTHON := $(VENV_DIR)/bin/python
@@ -37,7 +37,8 @@ CHIRP_REPO_URL := https://github.com/kk7ds/chirp.git
 CHIRP_REPO_REF ?= master
 CHIRP_REPO_COMMIT_FILE := $(SCRATCH)/.chirp_commit
 CHIRP_REPO_COMMIT = $(strip $(file < $(CHIRP_REPO_COMMIT_FILE)))
-CHIRP_REPO_TAG = $(shell echo $(CHIRP_REPO_COMMIT) | awk '{print substr($$1,1,7)}')
+CHIRP_REPO_COMMIT_SHORT = $(shell echo $(CHIRP_REPO_COMMIT) | awk '{print substr($$1,1,7)}')
+CHIRP_REPO_TAG = $(CHIRP_REPO_REF).$(CHIRP_REPO_COMMIT_SHORT)
 CHIRP_REQ_FILE_RAW := https://raw.githubusercontent.com/kk7ds/chirp/refs/heads/master/requirements.txt 
 CHIRP_REQ_FILE := $(SCRATCH)/chirp-requirements.txt
 FLATPAK_CHIRP_MODULE_FILE := $(BUILD_CTX_DIR)/chirp-requirements.yaml
@@ -49,7 +50,11 @@ FLATPAK_MANIFEST_FILE := $(BUILD_CTX_DIR)/$(FLATPAK_MANIFEST)
 
 FLATPAK_INSTALLATION ?= user
 
-.PHONY: help setup generate build install bundle release clean
+GH_OWNER ?= kr4erf
+GH_RELEASE_URL ?= https://github.com/$(GH_OWNER)/$(FLATPAK_APP_ID)/releases/download/$(CHIRP_REPO_TAG)/$(BUNDLE)
+GH_TRIGGER_REPO ?= $(GH_OWNER)/$(GH_OWNER).github.io
+
+.PHONY: help setup generate build install bundle release trigger clean
 
 help:
 	@echo "Usage:"
@@ -59,6 +64,7 @@ help:
 	@echo "  make install  Install flatpak locally"
 	@echo "  make bundle   Create flatpak bundle from build"
 	@echo "  make release  Upload bundle to GitHub Releases. Requires env: GH_TOKEN"
+	@echo "  make trigger  Trigger import on remote repository. Requires env: GH_TOKEN"
 	@echo "  make clean    Clean the installation"
 
 check-%:
@@ -156,8 +162,8 @@ bundle: build check-GPG_SIGNING_KEY
 		master
 
 release: check-GH_TOKEN bundle
-	gh release create "$(CHIRP_REPO_REF).$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) \
-		--title "$(CHIRP_REPO_REF).$(CHIRP_REPO_TAG)" \
+	gh release create "$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) \
+		--title "$(CHIRP_REPO_TAG)" \
 		--notes "$$( \
 			echo '=== Build Metadata ==='; \
 			echo 'REPO: $(CHIRP_REPO_URL)'; \
@@ -168,7 +174,12 @@ release: check-GH_TOKEN bundle
 			echo 'WXPYTHON_VERSION: $(WXPYTHON_VERSION)'; \
 		)" \
 		2> /dev/null \
-	|| gh release upload "$(CHIRP_REPO_REF).$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) --clobber
+	|| gh release upload "$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) --clobber
+
+trigger: check-GH_TOKEN
+	echo "Triggering import of $(GH_RELEASE_URL) into $(GH_TRIGGER_REPO)..."; \
+	echo "{\"event_type\": \"import-flatpak\", \"client_payload\": {\"download_url\": \"$(GH_RELEASE_URL)\", \"app_id\": \"$(FLATPAK_APP_ID)\"}}" | \
+	gh api --method POST /repos/$(GH_TRIGGER_REPO)/dispatches --input -
 
 install: build
 	flatpak install --$(FLATPAK_INSTALLATION) $(FLATPAK_REPO_DIR) $(FLATPAK_APP_ID)
