@@ -10,11 +10,16 @@ FLATPAK_PLATFORM := $(FLATPAK_RUNTIME_PLATFORM)//$(FLATPAK_RUNTIME_VERSION)
 FLATPAK_SDK := $(FLATPAK_RUNTIME_SDK)//$(FLATPAK_RUNTIME_VERSION)
 WXPYTHON_VERSION ?= 4.2.5
 
+FILES_DIR := ./files
+PATCHES_DIR := ./patches
+TEMPLATE_DIR := ./templates
 SCRATCH_DIR := ./scratch
+
 SCRATCH := $(abspath $(SCRATCH_DIR))
-SCRATCH_STAMP := $(SCRATCH)/.stamp
 VENV_DIR := $(SCRATCH)/.venv
 BUILD_CTX_DIR := $(SCRATCH)/buildctx
+FLATPAK_FILES_DIR := $(BUILD_CTX_DIR)/files
+FLATPAK_PATCHES_DIR := $(BUILD_CTX_DIR)/patches
 FLATPAK_BUILD_DIR := $(BUILD_CTX_DIR)/build
 FLATPAK_REPO_DIR := $(BUILD_CTX_DIR)/repo
 
@@ -26,7 +31,11 @@ DEPS_VALIDATED := $(SCRATCH)/.deps-validated
 
 PYTHON := $(VENV_DIR)/bin/python
 PIP := $(PYTHON) -m pip
-PIP_STAMP := $(VENV_DIR)/.stamp
+
+
+SCRATCH_STAMP := $(SCRATCH)/.stamp-scratch
+PIP_STAMP := $(VENV_DIR)/.stamp-pip
+COPY_STAMP := $(SCRATCH)/.stamp-copy
 
 FLATPAK_BUILDER_TOOLS := https://github.com/flatpak/flatpak-builder-tools.git
 FLATPAK_BUILDER_TOOLS_DIR := $(SCRATCH)/$(basename $(notdir $(FLATPAK_BUILDER_TOOLS)))
@@ -43,7 +52,6 @@ CHIRP_REQ_FILE_RAW := https://raw.githubusercontent.com/kk7ds/chirp/refs/heads/m
 CHIRP_REQ_FILE := $(SCRATCH)/chirp-requirements.txt
 FLATPAK_CHIRP_MODULE_FILE := $(BUILD_CTX_DIR)/chirp-requirements.yaml
 
-TEMPLATE_DIR := ./templates
 FLATPAK_MANIFEST := $(FLATPAK_APP_ID).yaml
 FLATPAK_MANIFEST_TEMPLATE := $(TEMPLATE_DIR)/$(FLATPAK_MANIFEST).template
 FLATPAK_MANIFEST_FILE := $(BUILD_CTX_DIR)/$(FLATPAK_MANIFEST)
@@ -81,6 +89,8 @@ $(SCRATCH_STAMP):
 		$(SCRATCH) \
 		$(VENV_DIR) \
 		$(BUILD_CTX_DIR) \
+		$(FLATPAK_FILES_DIR) \
+		$(FLATPAK_PATCHES_DIR) \
 		$(FLATPAK_BUILD_DIR) \
 		$(FLATPAK_REPO_DIR)
 	touch $@
@@ -116,13 +126,18 @@ $(FLATPAK_PIP_GENERATOR_BIN): $(PIP_STAMP)
 	$(PIP) install PyYAML
 	$(PIP) install $(FLATPAK_BUILDER_PIP_TOOLS_DIR)
 
+SRC_FILES := $(shell find $(FILES_DIR) $(PATCHES_DIR) -type f)
+
+$(COPY_STAMP): $(SRC_FILES)
+	mkdir -p $(FLATPAK_FILES_DIR) $(FLATPAK_PATCHES_DIR)
+	cp -a $(FILES_DIR)/. $(FLATPAK_FILES_DIR)/
+	cp -a $(PATCHES_DIR)/. $(FLATPAK_PATCHES_DIR)/
+	touch $@
+
 $(CHIRP_REQ_FILE): $(PIP_STAMP)
 	curl --silent --show-error --location --output $(CHIRP_REQ_FILE) $(CHIRP_REQ_FILE_RAW)
 	sed --in-place --regexp-extended '/(Windows|\!="Linux"|^#|wxPython)/d' $(CHIRP_REQ_FILE)
 	echo "wxPython==$(WXPYTHON_VERSION)" >> $(CHIRP_REQ_FILE)
-
-$(CHIRP_BUILD_WRAPPER): $(PIP_STAMP)
-	cp $(CHIRP_WRAPPER) $(CHIRP_BUILD_WRAPPER)
 
 $(FLATPAK_MANIFEST_FILE): $(FLATPAK_MANIFEST_TEMPLATE) $(CHIRP_REPO_COMMIT_FILE)
 	FLATPAK_APP_ID=$(FLATPAK_APP_ID) \
@@ -144,11 +159,11 @@ $(FLATPAK_CHIRP_MODULE_FILE): $(PIP_STAMP) $(FLATPAK_PIP_GENERATOR_BIN) $(CHIRP_
 	sed -i '/^# Generated.*$$/d' $(FLATPAK_CHIRP_MODULE_FILE)
 	cp $(FLATPAK_CHIRP_MODULE_FILE) .
 
-setup: $(FLATPAK_PIP_GENERATOR_BIN) $(CHIRP_REQ_FILE) $(FLATPAK_MANIFEST_FILE) $(CHIRP_BUILD_WRAPPER)
+setup: $(FLATPAK_PIP_GENERATOR_BIN) $(CHIRP_REQ_FILE) $(FLATPAK_MANIFEST_FILE) $(COPY_STAMP)
 
 generate: $(FLATPAK_CHIRP_MODULE_FILE)
 
-build: setup generate check-GPG_SIGNING_KEY
+build: check-GPG_SIGNING_KEY setup generate
 	cd $(BUILD_CTX_DIR) \
 	&& flatpak-builder \
 		--force-clean \
@@ -158,7 +173,7 @@ build: setup generate check-GPG_SIGNING_KEY
 		$(FLATPAK_BUILD_DIR) \
 		$(FLATPAK_MANIFEST_FILE)
 
-bundle: build check-GPG_SIGNING_KEY
+bundle: check-GPG_SIGNING_KEY build
 	gpg --export --armor $(GPG_SIGNING_KEY) | \
 	flatpak build-bundle \
 		--gpg-keys=- \
@@ -189,6 +204,8 @@ trigger: check-GH_TOKEN
 
 install: build
 	flatpak install --$(FLATPAK_INSTALLATION) $(FLATPAK_REPO_DIR) $(FLATPAK_APP_ID)
+	flatpak install --$(FLATPAK_INSTALLATION) $(FLATPAK_REPO_DIR) $(FLATPAK_APP_ID).Locale
+	echo "You may need to run `flatpak update --$(FLATPAK_INSTALLATION) $(FLATPAK_APP_ID) for localization to work correctly" 
 
 clean:
 	rm --recursive --force $(SCRATCH)

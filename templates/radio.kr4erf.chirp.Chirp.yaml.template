@@ -1,6 +1,7 @@
 # vim: filetype=yaml
+# yamllint disable rule:line-length
 ---
-app-id: $FLATPAK_APP_ID 
+app-id: $FLATPAK_APP_ID
 runtime: $FLATPAK_RUNTIME_PLATFORM
 runtime-version: '$FLATPAK_RUNTIME_VERSION'
 sdk: $FLATPAK_RUNTIME_SDK
@@ -27,7 +28,10 @@ modules:
         url: $CHIRP_REPO_URL
         commit: $CHIRP_REPO_COMMIT
       - type: file
-        path: chirpwx-wrapper.sh
+        path: 'files/chirpwx-wrapper.sh'
+      - type: patch
+        path: 'patches/__init__.py.patch'
+        strip-components: 1
     post-install:
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
@@ -37,3 +41,4 @@ modules:
       - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/com.chirpmyradio.CHIRP.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - sed -i 's/com.chirpmyradio.CHIRP/radio.kr4erf.chirp.Chirp/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - sed -i 's/chirp.desktop/radio.kr4erf.chirp.Chirp.desktop/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - cp -r "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/locale/ ${FLATPAK_DEST}/share/locale/
