@@ -25,6 +25,8 @@ FLATPAK_REPO_DIR := $(BUILD_CTX_DIR)/repo
 
 BUNDLE := $(FLATPAK_APP_ID).flatpak
 FLATPAK_BUNDLE := $(SCRATCH)/$(BUNDLE)
+REPO_ARCHIVE := $(FLATPAK_APP_ID).repo.tar.zst
+FLATPAK_REPO_ARCHIVE := $(SCRATCH)/$(REPO_ARCHIVE)
 
 DEPS := curl envsubst flatpak flatpak-builder git gpg python3 sed gh
 DEPS_VALIDATED := $(SCRATCH)/.deps-validated
@@ -62,21 +64,22 @@ CHIRP_BUILD_WRAPPER := $(BUILD_CTX_DIR)/$(CHIRP_WRAPPER)
 FLATPAK_INSTALLATION ?= user
 
 GH_OWNER ?= kr4erf
-GH_RELEASE_URL ?= https://github.com/$(GH_OWNER)/$(FLATPAK_APP_ID)/releases/download/$(CHIRP_REPO_TAG)/$(BUNDLE)
+GH_RELEASE_URL ?= https://github.com/$(GH_OWNER)/$(FLATPAK_APP_ID)/releases/download/$(CHIRP_REPO_TAG)/$(REPO_ARCHIVE)
 GH_TRIGGER_REPO ?= $(GH_OWNER)/$(GH_OWNER).github.io
 
-.PHONY: help setup generate build install bundle release trigger clean
+.PHONY: help setup generate build install bundle archive release trigger clean
 
 help:
 	@echo "Usage:"
-	@echo "  make setup    Gather needed files and runtimes"
-	@echo "  make generate Generate flatpak manifest"
-	@echo "  make build    Create flatpak. Requires env: GPG_SIGNING_KEY"
-	@echo "  make install  Install flatpak locally"
-	@echo "  make bundle   Create flatpak bundle from build"
-	@echo "  make release  Upload bundle to GitHub Releases. Requires env: GH_TOKEN"
-	@echo "  make trigger  Trigger import on remote repository. Requires env: GH_TOKEN"
-	@echo "  make clean    Clean the installation"
+	@echo "  make setup       Gather needed files and runtimes"
+	@echo "  make generate    Generate flatpak manifest"
+	@echo "  make build       Create flatpak. Requires env: GPG_SIGNING_KEY"
+	@echo "  make install     Install flatpak locally"
+	@echo "  make bundle      Create flatpak bundle from build"
+	@echo "  make archive     Create repo tarball from build"
+	@echo "  make release     Upload bundle and repo archive to GitHub Releases. Requires env: GH_TOKEN"
+	@echo "  make trigger     Trigger import on remote repository. Requires env: GH_TOKEN"
+	@echo "  make clean       Clean the installation"
 
 check-%:
 	@if [ -z "$($*)" ]; then \
@@ -182,8 +185,13 @@ bundle: check-GPG_SIGNING_KEY build
 		$(FLATPAK_APP_ID) \
 		master
 
-release: check-GH_TOKEN bundle
-	gh release create "$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) \
+archive: build
+	tar -c --zstd -f $(FLATPAK_REPO_ARCHIVE) -C $(BUILD_CTX_DIR) repo/
+
+release: check-GH_TOKEN bundle archive
+	gh release create "$(CHIRP_REPO_TAG)" \
+		$(FLATPAK_BUNDLE) \
+		$(FLATPAK_REPO_ARCHIVE) \
 		--title "$(CHIRP_REPO_TAG)" \
 		--notes "$$( \
 			echo '=== Build Metadata ==='; \
@@ -195,7 +203,10 @@ release: check-GH_TOKEN bundle
 			echo 'WXPYTHON_VERSION: $(WXPYTHON_VERSION)'; \
 		)" \
 		2> /dev/null \
-	|| gh release upload "$(CHIRP_REPO_TAG)" $(FLATPAK_BUNDLE) --clobber
+	|| gh release upload "$(CHIRP_REPO_TAG)" \
+		$(FLATPAK_BUNDLE) \
+		$(FLATPAK_REPO_ARCHIVE) \
+		--clobber
 
 trigger: check-GH_TOKEN
 	echo "Triggering import of $(GH_RELEASE_URL) into $(GH_TRIGGER_REPO)..."; \
@@ -205,7 +216,7 @@ trigger: check-GH_TOKEN
 install: build
 	flatpak install --$(FLATPAK_INSTALLATION) $(FLATPAK_REPO_DIR) $(FLATPAK_APP_ID)
 	flatpak install --$(FLATPAK_INSTALLATION) $(FLATPAK_REPO_DIR) $(FLATPAK_APP_ID).Locale
-	echo "You may need to run `flatpak update --$(FLATPAK_INSTALLATION) $(FLATPAK_APP_ID) for localization to work correctly" 
+	flatpak update --$(FLATPAK_INSTALLATION) $(FLATPAK_APP_ID)
 
 clean:
 	rm --recursive --force $(SCRATCH)

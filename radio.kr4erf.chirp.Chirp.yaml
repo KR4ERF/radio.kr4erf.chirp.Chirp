@@ -20,25 +20,42 @@ modules:
     buildsystem: simple
     build-commands:
       - cd ./chirp/locale && make
-      - python3 -m pip install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
-      - cp chirpwx.py ${FLATPAK_DEST}/bin/
-      - install -Dm755 chirpwx-wrapper.sh ${FLATPAK_DEST}/bin/chirpwx-wrapper.sh
+      - python3 -m pip install --no-deps --no-build-isolation --prefix="${FLATPAK_DEST}" .
+      - mkdir -p "${FLATPAK_DEST}/share"
+      - cp -r "$(python3 -m pip show chirp | awk '/Location:/ {print $2}')"/chirp/locale/ "${FLATPAK_DEST}/share/locale/"
     sources:
       - type: git
         url: https://github.com/kk7ds/chirp.git
-        commit: f4d152ee90cf521632e633af092470fe84ec862d
+        commit: 8f060d54ffcfe6c7b7d96c62ca1d473001047205
       - type: file
         path: 'files/chirpwx-wrapper.sh'
       - type: patch
         path: 'patches/__init__.py.patch'
         strip-components: 1
     post-install:
-      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
-      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
-      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/chirp.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-icon=$FLATPAK_ID ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-key 'Exec' --set-value 'chirpwx-wrapper.sh %F' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/share/com.chirpmyradio.CHIRP.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - sed -i 's/com.chirpmyradio.CHIRP/radio.kr4erf.chirp.Chirp/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - sed -i 's/chirp.desktop/radio.kr4erf.chirp.Chirp.desktop/g' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - cp -r "$(pip show chirp | awk '/Location:/ {print $2}')"/chirp/locale/ ${FLATPAK_DEST}/share/locale/
+      - |
+        SITE_PACKAGES="$(python3 -m pip show chirp | awk '/Location:/ {print $2}')"
+        CHIRP_SHARE="${SITE_PACKAGES}/chirp/share"
+        APP_SHARE="${FLATPAK_DEST}/share"
+        APP_BIN="${FLATPAK_DEST}/bin"
+
+        # Install application icons
+        APP_ICONS="${APP_SHARE}/icons/"
+        install -Dm644 "${CHIRP_SHARE}"/chirp.svg "${APP_ICONS}/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+        install -Dm644 "${CHIRP_SHARE}"/chirp.png "${APP_ICONS}/hicolor/256x256/apps/${FLATPAK_ID}.png"
+
+        # Update desktop file
+        DESKTOP_FILE="${APP_SHARE}/applications/${FLATPAK_ID}.desktop"
+        install -Dm644 "${CHIRP_SHARE}/chirp.desktop" "${DESKTOP_FILE}"
+        desktop-file-edit --set-icon="${FLATPAK_ID}" "${DESKTOP_FILE}"
+        desktop-file-edit --set-key 'Exec' --set-value 'chirpwx-wrapper.sh %F' "${DESKTOP_FILE}"
+
+        # Update metainfo file
+        METAINFO_FILE="${APP_SHARE}/metainfo/${FLATPAK_ID}.metainfo.xml"
+        install -Dm644 "${CHIRP_SHARE}/com.chirpmyradio.CHIRP.metainfo.xml" "${METAINFO_FILE}"
+        sed -i 's/com.chirpmyradio.CHIRP/radio.kr4erf.chirp.Chirp/g' "${METAINFO_FILE}"
+        sed -i 's/chirp.desktop/radio.kr4erf.chirp.Chirp.desktop/g' "${METAINFO_FILE}"
+
+        # Install chirpwx.py wrapper
+        cp chirpwx.py "${APP_BIN}"
+        install -Dm755 chirpwx-wrapper.sh "${APP_BIN}/chirpwx-wrapper.sh"
